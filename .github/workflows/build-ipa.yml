@@ -1,0 +1,134 @@
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'Прямая ссылка на расшифрованный SoundCloud .ipa (пусто = релиз base-ipa этого репозитория)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-ipa:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Theos
+        uses: waruhachi/theos-action@v2.4.6
+        with:
+          theos-src: 'waruhachi/theos'
+          theos-branch: 'main'
+          sdks-src: 'waruhachi/sdks'
+          sdks-branch: 'main'
+
+      # Для IPA нужен rootful-билд (пути /Library/...), только arm64:
+      # armv7/armv7s на современных SDK не собираются и в IPA не нужны.
+      - name: Build tweak (rootful, arm64)
+        run: |
+          make clean package FINALPACKAGE=1 ARCHS="arm64" TARGET="iphone:clang:latest:15.0"
+
+      - name: Collect dylib and resource bundle
+        run: |
+          set -euo pipefail
+          STAGE=$(find .theos -type d -path '*/Library/MobileSubstrate/DynamicLibraries' | head -n 1)
+          test -n "$STAGE" || { echo "::error::staging dir not found"; exit 1; }
+          test -f "$STAGE/SCMusicPlus.dylib" || { echo "::error::SCMusicPlus.dylib not built"; exit 1; }
+          test -f "$STAGE/SCMusicPlus.bundle/app.html" || { echo "::error::SCMusicPlus.bundle is missing or incomplete"; exit 1; }
+          test -f "$STAGE/SCMusicPlus.bundle/Web/ext/content.js" || { echo "::error::Web/ext files missing in bundle"; exit 1; }
+          rm -rf inject && mkdir -p inject
+          cp "$STAGE/SCMusicPlus.dylib" inject/
+          cp -R "$STAGE/SCMusicPlus.bundle" inject/
+          lipo -info inject/SCMusicPlus.dylib
+          otool -L inject/SCMusicPlus.dylib
+
+      - name: Get base SoundCloud IPA
+        env:
+          IPA_URL: ${{ inputs.ipa_url }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf base && mkdir -p base
+          if [ -n "$IPA_URL" ]; then
+            echo "Downloading from input URL"
+            curl -L --fail --retry 3 -o base/SoundCloud.ipa "$IPA_URL"
+          else
+            echo "Downloading from release 'base-ipa' of $GITHUB_REPOSITORY"
+            gh release download base-ipa --repo "$GITHUB_REPOSITORY" --pattern '*.ipa' --dir base --clobber \
+              || { echo "::error::Нет ipa_url и нет релиза base-ipa с .ipa. Укажи ссылку или загрузи .ipa в релиз с тегом base-ipa."; exit 1; }
+            FIRST=$(ls base/*.ipa | head -n 1)
+            [ "$FIRST" = "base/SoundCloud.ipa" ] || mv "$FIRST" base/SoundCloud.ipa
+          fi
+          ls -lh base/
+          unzip -tq base/SoundCloud.ipa >/dev/null || { echo "::error::Файл не является корректным zip/ipa (проверь ссылку — это должен быть прямой линк на файл)"; exit 1; }
+
+      - name: Validate base IPA (bundle id, not encrypted)
+        run: |
+          set -euo pipefail
+          rm -rf chk && mkdir chk
+          unzip -q base/SoundCloud.ipa -d chk
+          APP=$(find chk/Payload -maxdepth 1 -type d -name '*.app' | head -n 1)
+          test -n "$APP" || { echo "::error::В ipa нет Payload/*.app"; exit 1; }
+          BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          VER=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          echo "bundle id: $BID, version: $VER, executable: $EXE"
+          if [ "$BID" != "com.soundcloud.TouchApp" ]; then
+            echo "::warning::bundle id = $BID, а твик фильтруется по com.soundcloud.TouchApp"
+          fi
+          if otool -l "$APP/$EXE" | grep -A4 LC_ENCRYPTION_INFO | grep -q 'cryptid 1'; then
+            echo "::error::IPA зашифрован (cryptid 1) — это App Store ipa. Нужен расшифрованный."
+            exit 1
+          fi
+          rm -rf chk
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install cyan (pyzule-rw) and ldid
+        run: |
+          set -euo pipefail
+          brew install ldid
+          pip install https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
+          cyan --help | head -n 40
+
+      # cyan вставляет load command для dylib и добавляет ElleKit вместо CydiaSubstrate,
+      # без которого хуки (отключение рекламы) в не-джейлбрейк IPA не работают.
+      - name: Inject tweak into IPA
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cyan -i base/SoundCloud.ipa -o out/SoundCloud-Customizer.ipa \
+               -f inject/SCMusicPlus.dylib inject/SCMusicPlus.bundle -u
+
+      - name: Verify result (and put bundle next to the dylib)
+        run: |
+          set -euo pipefail
+          rm -rf res && mkdir res
+          unzip -q out/SoundCloud-Customizer.ipa -d res
+          APP=$(find res/Payload -maxdepth 1 -type d -name '*.app' | head -n 1)
+          EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+          echo "--- injected files"
+          find "$APP" \( -name 'SCMusicPlus*' -o -iname '*substrate*' -o -iname '*ellekit*' \) -maxdepth 3
+          DYLIB=$(find "$APP" -name 'SCMusicPlus.dylib' | head -n 1)
+          test -n "$DYLIB" || { echo "::error::SCMusicPlus.dylib не попал в IPA"; exit 1; }
+          otool -L "$APP/$EXE" | grep -i SCMusicPlus || { echo "::error::в главном бинарнике нет load command для SCMusicPlus"; exit 1; }
+          DIR=$(dirname "$DYLIB")
+          if [ ! -f "$DIR/SCMusicPlus.bundle/app.html" ] \
+             && [ ! -f "$APP/SCMusicPlus.bundle/app.html" ] \
+             && [ ! -f "$APP/Frameworks/SCMusicPlus.bundle/app.html" ]; then
+            echo "Bundle not found after cyan, copying next to dylib"
+            cp -R inject/SCMusicPlus.bundle "$DIR/"
+            (cd res && rm -f ../out/SoundCloud-Customizer.ipa && zip -qry ../out/SoundCloud-Customizer.ipa Payload)
+          fi
+          ls -lh out/
+          shasum -a 256 out/SoundCloud-Customizer.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoundCloud-Customizer-ipa
+          path: out/SoundCloud-Customizer.ipa
+          retention-days: 14
