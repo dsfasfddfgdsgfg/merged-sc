@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Customizer for SoundCloud — настройки</title>
+  <link rel="stylesheet" href="options.css">
+  <link rel="stylesheet" href="options-app.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <span class="ticon"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg></span>
+      <div class="ttl"><div class="ttl-n">Настройки</div><div class="ttl-s">Персонализация вашего SoundCloud</div></div>
+      <button class="x" id="close" type="button" title="Закрыть (Esc)" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="shell">
+      <aside class="side">
+        <div class="brand"><span class="logo">S</span><span class="brand-t">Customizer<br>for SoundCloud</span></div>
+        <nav id="nav"></nav>
+        <a class="tip-btn dev-btn" href="https://soundcloud.com/211ncux" target="_blank" rel="noopener noreferrer" title="Открыть страницу разработчика на SoundCloud (откроется внешний сайт)"><svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2.2c-4.1 0-7.5 2.2-7.5 5v1.3h15v-1.3c0-2.8-3.4-5-7.5-5z"/></svg><span>СТРАНИЦА РАЗРАБОТЧИКА</span></a>
+        <a class="tip-btn" href="https://pay.cloudtips.ru/p/cf705433" target="_blank" rel="noopener noreferrer" title="Необязательно: добровольно поддержать автора (откроется внешний сайт)"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"/></svg><span>СДЕЛАТЬ ПОДГОН</span></a>
+        <p class="legal-note">Неофициальное расширение. Не связано с SoundCloud и не одобрено им. Данные не собираются и не передаются.</p>
+      </aside>
+      <main class="page"><div class="page-in" id="page"></div></main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="css-builder.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
