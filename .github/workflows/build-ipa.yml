@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-ipa:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +81,11 @@ jobs:
           if otool -l "$APP/$EXE" | grep -A4 LC_ENCRYPTION_INFO | grep -q 'cryptid 1'; then
             echo "::error::IPA зашифрован (cryptid 1) — это App Store ipa. Нужен расшифрованный."
             exit 1
+          fi
+          echo "--- уже внедрённые в базовый IPA dylib/фреймворки (кроме системных фреймворков приложения):"
+          find "$APP" -maxdepth 3 -name '*.dylib' || true
+          if find "$APP" -maxdepth 3 \( -name '*.dylib' -o -iname '*substrate*' -o -iname '*ellekit*' \) | grep -q .; then
+            echo "::warning::В базовом IPA уже есть чужие dylib/твики — они могут конфликтовать с SCMusicPlus. Лучше взять чистый расшифрованный IPA."
           fi
           rm -rf chk
 
