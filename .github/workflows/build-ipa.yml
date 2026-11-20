@@ -6,13 +6,18 @@ on:
         required: false
         default: ''
         type: string
+      disable_foreign_tweaks:
+        description: 'Заменить чужие твики из базового IPA (NexaSC.dylib, zxPluginsInject.dylib) пустыми заглушками'
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
   build-ipa:
-    runs-on: macos-15
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -131,6 +136,31 @@ jobs:
           fi
           ls -lh out/
           shasum -a 256 out/SoundCloud-Customizer.ipa
+
+      # В базовом IPA уже сидят чужие твики; они могут патчить системные библиотеки и ронять приложение.
+      # Заглушка: пустой dylib с тем же install name, загрузчик находит его, хуков нет.
+      - name: Neutralize foreign tweaks from base IPA
+        if: ${{ inputs.disable_foreign_tweaks }}
+        run: |
+          set -euo pipefail
+          rm -rf res2 && mkdir res2
+          unzip -q out/SoundCloud-Customizer.ipa -d res2
+          APP=$(find res2/Payload -maxdepth 1 -type d -name '*.app' | head -n 1)
+          printf 'void scmc_stub(void){}\n' > stub.c
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          for NAME in NexaSC.dylib zxPluginsInject.dylib; do
+            F=$(find "$APP" -name "$NAME" | head -n 1)
+            if [ -z "$F" ]; then echo "skip $NAME (not found)"; continue; fi
+            ID=$(otool -D "$F" | tail -n 1)
+            echo "stubbing $F (install name: $ID)"
+            clang -dynamiclib -arch arm64 -arch arm64e -isysroot "$SDK" -miphoneos-version-min=15.0 \
+                  -install_name "$ID" -compatibility_version 99.0.0 -current_version 99.0.0 \
+                  -o "$F" stub.c
+            ldid -S "$F"
+            lipo -info "$F"
+          done
+          (cd res2 && rm -f ../out/SoundCloud-Customizer.ipa && zip -qry ../out/SoundCloud-Customizer.ipa Payload)
+          ls -lh out/
 
       - uses: actions/upload-artifact@v4
         with:
