@@ -1,3 +1,4 @@
+import argparse, os, plistlib, re, shutil, struct, subprocess, sys, tempfile
 
 DYLIB_CMDS = {0x0C: 'LOAD_DYLIB', 0x80000018: 'LOAD_WEAK_DYLIB', 0x8000001F: 'REEXPORT_DYLIB',
               0x20: 'LAZY_LOAD_DYLIB', 0x80000023: 'LOAD_UPWARD_DYLIB'}
