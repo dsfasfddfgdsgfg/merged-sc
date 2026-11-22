@@ -1,0 +1,8 @@
+Customizer for SoundCloud — third-party components
+
+fonts/poppins-bold.ttf — Poppins Bold, Copyright 2020 The Poppins Project Authors,
+  SIL Open Font License 1.1 (see fonts/OFL-Poppins.txt).
+fonts/pixelify-sans.ttf — Pixelify Sans (Medium), Copyright 2021 The Pixelify Sans Project Authors,
+  SIL Open Font License 1.1 (see fonts/OFL-PixelifySans.txt).
+Google Fonts — fetched on demand from fonts.googleapis.com / fonts.gstatic.com; each family is under its own open license (OFL / Apache 2.0).
+"SoundCloud" is a trademark of its owner. This extension is not affiliated with, endorsed by, or sponsored by SoundCloud.
