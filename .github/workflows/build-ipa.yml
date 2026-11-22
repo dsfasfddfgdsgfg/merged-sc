@@ -135,6 +135,9 @@ jobs:
 
           DENY = re.compile(r'(substrate|ellekit|substitute|libhooker|cydia|frida|scmusicplus|sideload|cephei|rocketbootstrap|'
                             r'libsparkapplist|libcolorpicker|tweakinject|injectdylib|dobby|fishhook)', re.I)
+          # Заплатка Keychain для сайдлоада (из iosdecrypted) — не мод: без неё приложение, переподписанное чужим Team ID,
+          # может падать при первом же обращении к связке ключей. Её не трогаем никогда.
+          KEEP_ALWAYS = re.compile(r'keychainfix', re.I)
           KEEP_LOOSE = re.compile(r'^(libswift|libclang_rt|libc\+\+|libobjc|libsystem)', re.I)
 
 
@@ -252,6 +255,8 @@ jobs:
                       path = os.path.join(d, name)
                       low = name.lower()
                       if low.endswith('.dylib'):
+                          if KEEP_ALWAYS.search(name):
+                              continue
                           if DENY.search(name) or (a.strict and not KEEP_LOOSE.match(name)):
                               rm(path)
                       elif low.endswith('.framework') and d == fw_dir:
@@ -280,6 +285,8 @@ jobs:
 
               def should_remove(path):
                   base = os.path.basename(path)
+                  if KEEP_ALWAYS.search(path):
+                      return False
                   if DENY.search(path):          # проверяем раньше is_system: бывают ссылки вида /usr/lib/libsubstrate.dylib
                       return True
                   if is_system(path):
@@ -302,7 +309,7 @@ jobs:
               extra = []
               for d in scan_dirs:
                   for name in sorted(os.listdir(d)):
-                      if name.lower().endswith('.dylib') and not KEEP_LOOSE.match(name):
+                      if name.lower().endswith('.dylib') and not KEEP_LOOSE.match(name) and not KEEP_ALWAYS.search(name):
                           extra.append(os.path.relpath(os.path.join(d, name), app))
               rep += [f'- loose dylib: `{e}`' for e in extra] or ['- посторонних loose dylib нет']
 
@@ -331,6 +338,21 @@ jobs:
           mkdir -p out
           cyan -i base/SoundCloud.clean.ipa -o out/SoundCloud-Customizer.ipa \
                -f inject/SCMusicPlus.dylib inject/SCMusicPlus.bundle -u
+
+      # Журнал твика (scmc.log) лежит в Documents приложения. Чтобы его можно было открыть в приложении «Файлы»,
+      # включаем в Info.plist файловый доступ.
+      - name: Enable Files-app access (to read scmc.log)
+        run: |
+          set -euo pipefail
+          rm -rf fa && mkdir fa
+          unzip -q out/SoundCloud-Customizer.ipa -d fa
+          APP=$(find fa/Payload -maxdepth 1 -type d -name '*.app' | head -n 1)
+          for K in UIFileSharingEnabled LSSupportsOpeningDocumentsInPlace; do
+            /usr/libexec/PlistBuddy -c "Delete :$K" "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :$K bool true" "$APP/Info.plist"
+          done
+          (cd fa && rm -f ../out/SoundCloud-Customizer.ipa && zip -qry ../out/SoundCloud-Customizer.ipa Payload)
+          rm -rf fa
 
       - name: Verify result (and put bundle next to the dylib)
         run: |
