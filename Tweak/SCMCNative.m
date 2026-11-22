@@ -120,7 +120,8 @@ NSURL *SCMCFallbackGroupURL(NSString *groupId) {
     for (NSUInteger i = 0; i < gid.length; i++) {
         unichar ch = [gid characterAtIndex:i];
         BOOL ok = (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '.' || ch == '-' || ch == '_';
-        [safe appendFormat:@"%C", ok ? ch : (unichar)'_'];
+        unichar out = ok ? ch : (unichar)'_';
+        [safe appendString:[NSString stringWithCharacters:&out length:1]];
     }
     NSArray<NSString *> *dirs = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
     NSString *base = [(dirs.firstObject ?: NSTemporaryDirectory()) stringByAppendingPathComponent:@"SCMC-AppGroups"];
@@ -557,7 +558,7 @@ static UIWindow *SCMCActiveWindow(void) {
     if (best) return best;
     id delegate = app.delegate;
     if ([delegate respondsToSelector:@selector(window)]) {
-        id w = [delegate performSelector:@selector(window)];
+        id w = [delegate valueForKey:@"window"];
         if ([w isKindOfClass:[UIWindow class]]) return w;
     }
     return nil;
